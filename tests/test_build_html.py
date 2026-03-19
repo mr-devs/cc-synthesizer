@@ -87,3 +87,49 @@ def test_parse_bib_misc_howpublished():
     entry = result["Jones2022Debate"]
     assert entry["venue"] == "Policy Report"
     assert entry["doi"] == ""
+
+
+# ── Markdown renderer tests ──────────────────────────────────────────────────
+def test_render_headings():
+    mod = _load_script()
+    html, title, headings = mod.render_markdown(
+        "# My Title\n\n## Section One\n\n### Sub-section\n"
+    )
+    assert title == "My Title"
+    assert "<h1>My Title</h1>" in html
+    assert 'id="section-one"' in html
+    assert "<h3>Sub-section</h3>" in html
+    assert headings == [("Section One", "section-one")]
+
+
+def test_render_paragraph_and_lists():
+    mod = _load_script()
+    html, _, _ = mod.render_markdown("A paragraph.\n\n- Item one\n- Item two\n")
+    assert "<p>A paragraph.</p>" in html
+    assert "<ul>" in html
+    assert "<li>Item one</li>" in html
+
+
+def test_render_inline_formatting():
+    mod = _load_script()
+    html, _, _ = mod.render_markdown("Some **bold** and *italic* text.\n")
+    assert "<strong>bold</strong>" in html
+    assert "<em>italic</em>" in html
+
+
+def test_render_citation_placeholder():
+    mod = _load_script()
+    html, _, _ = mod.render_markdown(
+        "Found X [Smith2023Finding] and Y [Lee2024Review].\n"
+    )
+    assert 'data-key="Smith2023Finding"' in html
+    assert 'data-key="Lee2024Review"' in html
+    # Raw bracket form must be replaced
+    assert "[Smith2023Finding]" not in html.replace('data-key="Smith2023Finding"', "")
+
+
+def test_render_html_escaping():
+    mod = _load_script()
+    html, _, _ = mod.render_markdown("A paragraph with <script>evil</script>.\n")
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html

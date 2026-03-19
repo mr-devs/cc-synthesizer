@@ -12,9 +12,13 @@ Phase 2 note:
 """
 
 import argparse
+import html
 import re
 import sys
 from pathlib import Path
+
+# Use html.escape() for safe HTML escaping
+escape = html.escape
 
 
 def parse_bib(text: str) -> dict:
@@ -46,6 +50,93 @@ def parse_bib(text: str) -> dict:
             "doi": field("doi"),
         }
     return entries
+
+
+def _slugify(text: str) -> str:
+    """Convert heading text to a URL-safe id slug."""
+    return re.sub(r"[^a-z0-9-]", "", text.lower().replace(" ", "-"))
+
+
+def _apply_inline(text: str) -> str:
+    """Apply bold, italic, and citation substitutions to already-HTML-escaped text.
+
+    Safe because *, [ are not HTML special characters and survive html.escape().
+    Citation keys (AuthorYearKeyword) also contain no special HTML chars.
+    """
+    # [BibKey] -> bare <cite> placeholder (metadata filled in by enrich_citations)
+    text = re.sub(
+        r"\[([A-Za-z][A-Za-z0-9]+)\]",
+        lambda m: f'<cite data-key="{m.group(1)}"></cite>',
+        text,
+    )
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
+    return text
+
+
+def render_markdown(text: str) -> tuple:
+    """Convert synthesis.md markdown subset to HTML.
+
+    Returns:
+        (html_body, title, h2_headings)
+        - html_body:    rendered HTML string
+        - title:        text of the first H1 (empty string if none)
+        - h2_headings:  list of (display_text, slug) tuples, in document order
+    """
+    lines = text.splitlines()
+    html_parts: list[str] = []
+    h2_headings: list[tuple[str, str]] = []
+    title = ""
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        if line.startswith("# "):
+            content = line[2:].strip()
+            if not title:
+                title = content
+            html_parts.append(f"<h1>{escape(content)}</h1>")
+            i += 1
+
+        elif line.startswith("## "):
+            content = line[3:].strip()
+            slug = _slugify(content)
+            h2_headings.append((content, slug))
+            html_parts.append(f'<h2 id="{slug}">{escape(content)}</h2>')
+            i += 1
+
+        elif line.startswith("### "):
+            content = line[4:].strip()
+            html_parts.append(f"<h3>{escape(content)}</h3>")
+            i += 1
+
+        elif line.startswith("- "):
+            items = []
+            while i < len(lines) and lines[i].startswith("- "):
+                item_text = _apply_inline(escape(lines[i][2:].strip()))
+                items.append(f"<li>{item_text}</li>")
+                i += 1
+            html_parts.append("<ul>" + "".join(items) + "</ul>")
+
+        elif line.strip() == "":
+            i += 1
+
+        else:
+            # Accumulate a paragraph (stop at blank line, heading, or list item)
+            para_lines = []
+            while (
+                i < len(lines)
+                and lines[i].strip() != ""
+                and not lines[i].startswith("#")
+                and not lines[i].startswith("- ")
+            ):
+                para_lines.append(lines[i])
+                i += 1
+            para_text = " ".join(para_lines)
+            html_parts.append(f"<p>{_apply_inline(escape(para_text))}</p>")
+
+    return "\n".join(html_parts), title, h2_headings
 
 
 def main():

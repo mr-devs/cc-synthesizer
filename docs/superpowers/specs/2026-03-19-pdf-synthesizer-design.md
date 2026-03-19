@@ -53,6 +53,7 @@ cc-synthesizer/
 ├── documents/                       # User drops PDFs here; subdirectories allowed
 │   └── README.md
 ├── summaries/                       # Auto-generated per-document markdown summaries
+│   ├── manifest.json                # BibTeX key → absolute PDF + summary paths (auto-generated)
 │   └── README.md
 ├── synthesis/                       # Auto-generated synthesis.md + synthesis.html
 │   └── README.md
@@ -102,7 +103,7 @@ cc-synthesizer/
 6. User opens synthesis/synthesis.html in browser
 ```
 
-**Single-command shortcut:** Running `/create-synthesis` on a fresh repo (no summaries yet) triggers `AskUserQuestion` to confirm, then executes the full pipeline automatically.
+**Single-command shortcut:** Running `/create-synthesis` on a fresh repo (no summaries yet) triggers `AskUserQuestion` to confirm, then automatically runs steps 2–4 (cleanup → summarize → synthesize). Step 5 (`/build-html`) is not included and must be run separately.
 
 ---
 
@@ -140,7 +141,16 @@ Reused verbatim from `cc-research-project-template`. Provides targeted `pdftotex
    - Writes summary to `summaries/{subdir}/{BibKey}.md` using type-appropriate template. If the PDF is in `documents/` directly (no subdirectory), the summary is written to `summaries/{BibKey}.md` (no subdirectory prefix).
 4. Skips documents with existing summaries (idempotent)
 5. Compacts context after every 5 documents to manage token budget
-6. Reports: processed, skipped, citation method used per document
+6. After writing each summary, appends an entry to `summaries/manifest.json` mapping BibTeX key → absolute PDF path and absolute summary path. This manifest is consumed by `build-html` to populate `data-pdf` and `data-summary` attributes. Entry format:
+   ```json
+   {
+     "Smith2023Finding": {
+       "pdf": "/abs/path/to/documents/subdir/Smith_-_2023_-_Title.pdf",
+       "summary": "/abs/path/to/summaries/subdir/Smith2023Finding.md"
+     }
+   }
+   ```
+7. Reports: processed, skipped, citation method used per document
 
 **Large corpus handling:** For corpora >20 documents, the skill processes in batches of 10, compacting between batches. The user is advised to run `/create-synthesis` in a fresh Claude Code context when the corpus exceeds ~30 documents.
 
@@ -168,7 +178,7 @@ All types share a consistent Metadata block (title, authors/org, year, publicati
 - `"I'm a newcomer — prioritize foundational concepts first"`
 - `path/to/my-outline.md` (a file with detailed goals, questions, or a rough outline)
 
-**Guidance document:** If a file path is provided, the skill reads that file as framing before doing anything else. The format is flexible — an outline, a paragraph of goals, a list of questions to answer. Not required. The skill also checks for `synthesis-guidance.md` at the repo root as a default (no argument needed if that file exists).
+**Guidance document:** The argument is disambiguated as follows: if the argument resolves to a readable file path on disk, it is treated as a guidance document and read as framing; otherwise it is treated as freetext context. The format is flexible — an outline, a paragraph of goals, a list of questions to answer. Not required. The skill also checks for `synthesis-guidance.md` at the repo root as a default (no argument needed if that file exists).
 
 **Pipeline check behavior:**
 1. Checks `summaries/` for existing summaries
@@ -211,11 +221,17 @@ The user maintains this file across sessions. It is included verbatim in every c
 **Argument:** `["optional page title or audience note"]`
 
 **Behavior:**
-1. Reads `synthesis/synthesis.md` and `references.bib`
-2. Renders a self-contained HTML file (all CSS/JS embedded inline, no external dependencies)
-3. Replaces `[BibKey]` citations with interactive `<cite>` elements
-4. Embeds Phase 1 interaction JavaScript
-5. Writes `synthesis/synthesis.html`
+1. Reads `synthesis/synthesis.md`, `references.bib`, and `summaries/manifest.json`
+2. Prerequisite checks:
+   - If `synthesis.md` is missing: halt with error
+   - If `references.bib` is missing: halt with error
+   - If `manifest.json` is missing: warn but continue (citation `<cite>` elements will have key only, no path attributes)
+   - If a citation key in `synthesis.md` has no entry in `references.bib`: render `<cite>` with key only and no metadata attributes; list missing keys in a warning at the end
+3. Sets HTML `<title>` to the H1 heading of `synthesis.md` (used as `synthesisTopic` in the Phase 2 payload contract)
+4. Renders a self-contained HTML file (all CSS/JS embedded inline, no external dependencies)
+5. Replaces `[BibKey]` citations with interactive `<cite>` elements; populates all data attributes using `references.bib` for metadata and `manifest.json` for absolute `file://` paths
+6. Embeds Phase 1 interaction JavaScript
+7. Writes `synthesis/synthesis.html`
 
 ---
 
@@ -305,7 +321,7 @@ Prompt is copied to clipboard. A toast notification confirms: *"Prompt copied �
 
 ### Synthesis Memory Document
 
-`synthesis/synthesis-memory.md` is created after the first Claude Code conversation about this synthesis. It captures: the topic, corpus summary, key conclusions reached, and any user-specific framing. It is included automatically in every subsequent clipboard prompt, giving Claude running context across sessions without re-explanation.
+`synthesis/synthesis-memory.md` is created automatically by `create-synthesis` as a stub after writing `synthesis.md`. It is pre-populated with topic, corpus, and key themes derived from the synthesis. The user maintains the "Conclusions reached" and "User framing notes" sections over time. The file is included verbatim in every clipboard prompt generated by `build-html`, giving Claude running context across sessions without re-explanation.
 
 ### Phase 2 Hook
 
@@ -325,7 +341,7 @@ The clipboard behavior is isolated in a single clearly-commented JS block:
        key, title, authors, year,
        venue, doi, pdf, summary      // all as stored in data-* attrs
      }>,
-     synthesisTopic: string,         // contents of the HTML <title> element
+     synthesisTopic: string,         // document.title (set by build-html to the H1 of synthesis.md)
      memoryDoc:      string | null,  // full text of synthesis-memory.md, or null if absent
      pdfPaths:       string[],       // data-pdf values from citations (absolute file:// paths)
      summaryPaths:   string[]        // data-summary values from citations (absolute file:// paths)

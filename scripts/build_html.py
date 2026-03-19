@@ -54,7 +54,8 @@ def parse_bib(text: str) -> dict:
 
 def _slugify(text: str) -> str:
     """Convert heading text to a URL-safe id slug."""
-    return re.sub(r"[^a-z0-9-]", "", text.lower().replace(" ", "-"))
+    slug = re.sub(r"[^a-z0-9-]", "", text.lower().replace(" ", "-"))
+    return slug if slug else "section"
 
 
 def _apply_inline(text: str) -> str:
@@ -88,6 +89,7 @@ def render_markdown(text: str) -> tuple:
     h2_headings: list[tuple[str, str]] = []
     title = ""
     i = 0
+    used_slugs: dict[str, int] = {}  # slug -> count of uses so far
 
     while i < len(lines):
         line = lines[i]
@@ -96,19 +98,25 @@ def render_markdown(text: str) -> tuple:
             content = line[2:].strip()
             if not title:
                 title = content
-            html_parts.append(f"<h1>{escape(content)}</h1>")
+            html_parts.append(f"<h1>{_apply_inline(escape(content))}</h1>")
             i += 1
 
         elif line.startswith("## "):
             content = line[3:].strip()
-            slug = _slugify(content)
+            raw_slug = _slugify(content)
+            if raw_slug not in used_slugs:
+                used_slugs[raw_slug] = 1
+                slug = raw_slug
+            else:
+                used_slugs[raw_slug] += 1
+                slug = f"{raw_slug}-{used_slugs[raw_slug]}"
             h2_headings.append((content, slug))
-            html_parts.append(f'<h2 id="{slug}">{escape(content)}</h2>')
+            html_parts.append(f'<h2 id="{slug}">{_apply_inline(escape(content))}</h2>')
             i += 1
 
         elif line.startswith("### "):
             content = line[4:].strip()
-            html_parts.append(f"<h3>{escape(content)}</h3>")
+            html_parts.append(f"<h3>{_apply_inline(escape(content))}</h3>")
             i += 1
 
         elif line.startswith("- "):

@@ -134,3 +134,18 @@ def test_render_html_escaping():
     html, _, _ = mod.render_markdown("A paragraph with <script>evil</script>.\n")
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_render_heading_inline_formatting():
+    mod = _load_script()
+    html, _, _ = mod.render_markdown("## **Bold** Section\n")
+    assert "<strong>Bold</strong>" in html
+
+
+def test_render_slug_collision():
+    mod = _load_script()
+    html, _, headings = mod.render_markdown("## Intro\n\n## Intro\n")
+    assert headings[0][1] == "intro"
+    assert headings[1][1] == "intro-2"
+    assert 'id="intro"' in html
+    assert 'id="intro-2"' in html

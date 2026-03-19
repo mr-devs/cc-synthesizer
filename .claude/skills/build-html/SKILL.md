@@ -73,7 +73,7 @@ Build a complete, self-contained HTML file per @.claude/reference/html-template-
 
 **The inline JavaScript must implement:**
 - Citation tooltip: show on `mouseenter`, hide on `mouseleave`; position near the element; populate from `data-*` attributes; "Open source" link = `https://doi.org/{data-doi}` if `data-doi` non-empty, else `data-pdf` if non-empty, else omit link; "View summary" link = `data-summary` if non-empty, else omit
-- Text selection → Ask Claude button: listen for `mouseup`; show `#ask-claude-btn` near selection when text is selected; on click, collect citations (overlapping selection range OR in same block-level parent element), call `handleAskClaude(payload)` with `{selectedText, citations[], synthesisTopic, memoryDoc: SYNTHESIS_MEMORY, pdfPaths, summaryPaths}`
+- Text selection → Ask Claude button: listen for `selectionchange` and `mouseup` events; show `#ask-claude-btn` near selection when text is selected; on click, collect citations (overlapping selection range OR in same block-level parent element), call `handleAskClaude(payload)` with `{selectedText, citations[], synthesisTopic, memoryDoc: SYNTHESIS_MEMORY, pdfPaths, summaryPaths}`
 - `buildPrompt(payload)` builds the clipboard prompt string per html-template-notes.md format
 - `showToast(message)` briefly shows then hides the `#toast` element
 - The isolated `handleAskClaude(payload)` function with the `PHASE2_SERVER_HOOK` comment block

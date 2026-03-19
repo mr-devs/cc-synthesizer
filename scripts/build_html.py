@@ -12,8 +12,40 @@ Phase 2 note:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
+
+
+def parse_bib(text: str) -> dict:
+    """Parse BibTeX text → {key: {title, authors, year, venue, doi}}.
+
+    Handles @article, @inproceedings, @misc, and any other entry type.
+    venue = first of: journal > booktitle > howpublished.
+    doi   = bare DOI string (no https://doi.org/ prefix).
+    """
+    entries = {}
+    for block in re.finditer(r"@\w+\{(\w+),(.*?)\n\}", text, re.DOTALL):
+        key = block.group(1).strip()
+        body = block.group(2)
+
+        def field(name: str) -> str:
+            m = re.search(
+                rf"\b{name}\s*=\s*\{{(.*?)\}}",
+                body,
+                re.DOTALL | re.IGNORECASE,
+            )
+            return m.group(1).strip() if m else ""
+
+        venue = field("journal") or field("booktitle") or field("howpublished")
+        entries[key] = {
+            "title": field("title"),
+            "authors": field("author"),
+            "year": field("year"),
+            "venue": venue,
+            "doi": field("doi"),
+        }
+    return entries
 
 
 def main():

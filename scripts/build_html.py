@@ -97,7 +97,7 @@ def enrich_citations(html: str, bib: dict, manifest: dict) -> tuple:
         - enriched_html: HTML with fully-attributed <cite> elements
         - missing_keys:  list of keys found in html but absent from bib
     """
-    missing: list = []
+    missing: list[str] = []
 
     def replace_cite(m: re.Match) -> str:
         key = m.group(1)

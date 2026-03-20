@@ -29,9 +29,12 @@ cp ~/papers/*.pdf documents/
 
 # 4. Launch the interactive HTML page:
 /launch-synthesis
+
+# 5. In a new terminal window, start the local server:
+uv run uvicorn server.main:app --reload
 ```
 
-`/launch-synthesis` builds the HTML, starts the local server, and opens the page in your browser with the "Ask Claude" side panel ready to use.
+`/launch-synthesis` builds the HTML and opens the page in your browser. Start the local server in a new terminal (step 5) to enable the "Ask Claude" side panel — closing that terminal stops the server.
 
 No separate API key needed — the Ask Claude feature uses your existing Claude Code subscription.
 

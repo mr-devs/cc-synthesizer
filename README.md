@@ -34,8 +34,11 @@ cd cc-synthesizer
 
 ```
 /launch-synthesis
+```
 
-# 5. In a new terminal window, start the local server:
+**5.** In a new terminal window, start the local server:
+
+```bash
 uv run uvicorn server.main:app --reload
 ```
 

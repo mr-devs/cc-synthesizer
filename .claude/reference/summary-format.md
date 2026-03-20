@@ -24,7 +24,7 @@ Summaries mirror the `documents/` subdirectory structure:
 - **Year:** {YYYY}
 - **Source:** {Journal / Conference / Publisher / Organization / arXiv [Preprint]}
 - **DOI/URL:** [{DOI or URL}]({link}) — or "Not available"
-- **BibTeX Key:** `{AuthorYearKeyword}`
+- **Citation Key:** `{AuthorYearKeyword}`
 - **Document type:** {Academic paper | Industry report | White paper | Book chapter | Technical documentation | Other}
 ```
 

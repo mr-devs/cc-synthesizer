@@ -1,6 +1,6 @@
 ---
 name: summarize-documents
-description: Generate per-document markdown summaries from PDFs. Detects document type and adapts the summary structure accordingly. Updates references.bib and summaries/manifest.json.
+description: Generate per-document markdown summaries from PDFs. Detects document type and adapts the summary structure accordingly. Updates citations.json.
 argument-hint: <path/to/pdf-or-directory> ["optional context"]
 allowed-tools: Bash, Read, Write, Edit, Glob, Agent
 ---
@@ -16,7 +16,7 @@ $ARGUMENTS
 ## Reference
 
 @.claude/reference/summary-format.md
-@.claude/reference/bibtex-format.md
+@.claude/reference/citations-format.md
 
 ## Instructions
 
@@ -43,9 +43,8 @@ Report count. If zero, inform user and stop.
 
 ### Step 3: Load Existing State
 
-1. Read `references.bib` if it exists; extract existing BibTeX keys for duplicate checking
-2. Read `summaries/manifest.json` if it exists; load existing key→path mappings
-3. For each PDF, determine expected BibTeX key by parsing filename (format: `Author_-_YYYY_-_Title.pdf` or `Author - YYYY - Title.pdf`):
+1. Read `citations.json` if it exists; extract existing citation keys for duplicate checking
+2. For each PDF, determine expected citation key by parsing filename (format: `Author_-_YYYY_-_Title.pdf` or `Author - YYYY - Title.pdf`):
    - First author surname: text before ` et al.`, ` and `, ` - `, or `_-_`
    - Year: 4-digit number after first ` - ` or `_-_`
    - Normalize surname: remove accents, remove hyphens
@@ -57,22 +56,18 @@ Report: existing bib entries, existing summaries, to process, to skip.
 
 ### Step 4: Process Each PDF
 
-**When processing multiple PDFs**, dispatch all of them in parallel using the Agent tool — one agent per PDF, all dispatched in the same message. Each agent has access to: `Bash, Read, Write, Glob`. Each agent handles steps 4a–4d independently and writes its own `.md` summary file. Agents must NOT write to `references.bib` or `summaries/manifest.json` — those are shared files written in Step 5. Each agent should return a structured result block:
+**When processing multiple PDFs**, dispatch all of them in parallel using the Agent tool — one agent per PDF, all dispatched in the same message. Each agent has access to: `Bash, Read, Write, Glob`. Each agent handles steps 4a–4d independently and writes its own `.md` summary file. Agents must NOT write to `citations.json` — that is a shared file written in Step 5. Each agent should return a structured result block:
 
 ```
 ---BEGIN_AGENT_RESULT---
 STATUS: success | error
 PDF: {pdf_path}
-BIBKEY: {final_bib_key}
+BIBKEY: {final_cit_key}
 CITATION_METHOD: doi|title|manual
 SUMMARY_PATH: {absolute_path}
-BIBTEX_ENTRY:
-```bibtex
-{complete entry}
-```
-MANIFEST_ENTRY:
+CITATION_ENTRY:
 ```json
-{ "{BibKey}": { "pdf": "...", "summary": "..." } }
+{ "Smith2023Finding": { "title": "...", "authors": "...", "year": "...", "venue": "...", "doi": "...", "url": "...", "type": "...", "pdf": "/abs/path/documents/subdir/Smith_-_2023_-_Title.pdf", "summary": "/abs/path/summaries/subdir/Smith2023Finding.md" } }
 ```
 WARNINGS: {any warnings, or "none"}
 ---END_AGENT_RESULT---
@@ -90,14 +85,13 @@ For each PDF marked **process**:
    ```bash
    .claude/skills/pdf-extraction/scripts/pdf_extract.sh search "{pdf_path}" "doi"
    ```
-2. If DOI found: run `fbib "{doi}"` — if successful, use this BibTeX entry (regenerate key per @.claude/reference/bibtex-format.md)
+2. If DOI found: run `fbib "{doi}"` — if successful, use this BibTeX entry (regenerate key per @.claude/reference/citations-format.md); extract fields (`title`, `authors`, `year`, `venue`, `doi`, `url`, `type`) for the `citations.json` entry
 3. If no DOI or fbib fails: extract first page and try title-based search:
    ```bash
    .claude/skills/pdf-extraction/scripts/pdf_extract.sh first "{pdf_path}" 1
    ```
    Then run `fbib "Full Paper Title"`
-4. If both fail: use the already-extracted first page to construct the entry manually per @.claude/reference/bibtex-format.md
-5. Append new entry to `references.bib` (create file if absent); verify no duplicate key
+4. If both fail: use the already-extracted first page to construct the entry manually per @.claude/reference/citations-format.md
 
 #### 4b. Detect Document Type
 
@@ -137,20 +131,11 @@ For papers >8 pages: extract strategically:
 2. Write summary using the template for the detected document type per @.claude/reference/summary-format.md
 3. If context was provided in $ARGUMENTS, use it to orient emphasis in the summary (e.g., "focus on methodology")
 
-#### 4e. Update Manifest (sequential mode only)
+#### 4e. Update Citations (sequential mode only)
 
-When **not** using parallel agents, upsert an entry in `summaries/manifest.json` (create file if absent; add or overwrite the entry for this BibTeX key — do not remove existing entries for other keys):
+When **not** using parallel agents, upsert the entry into `citations.json` at the repo root (create file if absent; add or overwrite the entry for this citation key — do not remove existing entries for other keys). Include all fields: `title`, `authors`, `year`, `venue`, `doi`, `url`, `type`, `pdf`, `summary` (absolute filesystem paths).
 
-```json
-{
-  "Smith2023Finding": {
-    "pdf": "/absolute/path/to/documents/subdir/Smith_-_2023_-_Title.pdf",
-    "summary": "/absolute/path/to/summaries/subdir/Smith2023Finding.md"
-  }
-}
-```
-
-Use the absolute filesystem path (not a relative path).
+Write atomically: write the full JSON to a temp file in the same directory, then rename to `citations.json`.
 
 ---
 
@@ -159,9 +144,12 @@ Use the absolute filesystem path (not a relative path).
 After all agents have returned, collect their structured result blocks.
 
 1. **Triage**: parse each `---BEGIN_AGENT_RESULT---` block; separate successes from errors (or unparseable output)
-2. **Deduplicate BibTeX keys**: re-read `references.bib` from disk; skip any key already present; if two agents returned the same new key, rename the second with a letter suffix (`b`, `c`, …) and note it in warnings
-3. **Write `references.bib`**: append all new, non-duplicate entries in a single write
-4. **Write `manifest.json`**: read current file (or `{}`), merge all new manifest entries from successful agents, write back
+2. **Read existing `citations.json`** from disk first (or `{}` if absent)
+3. **Deduplicate citation keys**: two collision cases:
+   - **Same-batch collision**: two agents returned the same `CitKey` for different PDFs → rename the second with a letter suffix (`b`, `c`, …) and note it in warnings
+   - **Reprocess collision**: a batch key matches a pre-existing on-disk key for the same PDF → overwrite (true upsert)
+   - A batch key that collides with a pre-existing on-disk key for a *different* PDF is treated as a same-batch collision and renamed
+4. **Write `citations.json`**: merge all new `CITATION_ENTRY` objects (parsed as JSON) into the existing dict; write atomically (temp file + rename)
 
 ---
 
@@ -200,4 +188,4 @@ Report "Could not read PDF: {filename}", skip the file, continue with remaining 
 If filename doesn't match `Author - YYYY - Title` or `Author_-_YYYY_-_Title` format, extract first page to get metadata directly rather than parsing the filename.
 
 ### Missing venue or DOI
-Per @.claude/reference/bibtex-format.md — omit the field; use `@misc` entry type if venue is unknown.
+Per @.claude/reference/citations-format.md — omit the field; use `@misc` entry type if venue is unknown.

@@ -107,12 +107,12 @@ def render_markdown(text: str) -> tuple[str, str, list[tuple[int, str, str]], st
 ```
 returning `(html_body, title, nav_headings, doc_count)` with identical semantics. This keeps all existing `test_render_*` tests valid with only input/assertion updates where needed.
 
-**Custom inline plugin:** A small `markdown-it-py` inline rule (~20 lines) registered on the `MarkdownIt` instance with **high priority** (before link parsing) so that `[@Key]` is consumed before markdown-it-py attempts to interpret `[...]` as a link reference. The rule's `match` step checks whether the current position in the source starts with `[@`; if so, the `parse` step scans forward greedily to the next `]`, extracts the content between `[@` and `]`, splits on `,` to get individual `@Key` tokens, strips the leading `@` from each key, and emits HTML. Embedding `[@Key]` inside a link label (e.g., `[text [@Key]](url)`) is out of scope and not a supported usage. The `@` prefix is stripped from display text to preserve identical HTML output to the current system:
+**Custom inline plugin:** A small `markdown-it-py` inline rule (~20 lines) registered on the `MarkdownIt` instance with **high priority** (before link parsing) so that `[@Key]` is consumed before markdown-it-py attempts to interpret `[...]` as a link reference. Register using: `md.inline.ruler.before("link", "citation", citation_rule)`. The rule function signature is `citation_rule(state, silent) -> bool` (standard `markdown-it-py` inline rule API). The rule checks whether the current position in `state.src` starts with `[@`; if so, it scans forward greedily to the next `]`, extracts the content between `[@` and `]`, splits on `,` to get individual `@Key` tokens, strips the leading `@` from each key, and pushes a single `html_inline` token containing the rendered `<cite>` HTML. If `silent` is `True`, the rule returns `True` without mutating state (required for lookahead). Embedding `[@Key]` inside a link label (e.g., `[text [@Key]](url)`) is out of scope and not a supported usage. The `@` prefix is stripped from display text to preserve identical HTML output to the current system:
 
 - Single `[@Smith2023Finding]` → `<cite data-key="Smith2023Finding">[Smith2023Finding]</cite>`
 - Multi `[@Jones2022Debate, @Lee2024Review]` → `[<cite data-key="Jones2022Debate">Jones2022Debate</cite>, <cite data-key="Lee2024Review">Lee2024Review</cite>]`
 
-The multi-citation format (outer brackets, comma-separated individual `<cite>` elements without inner brackets) matches the current output exactly. For multi-key citations, the plugin emits a literal `[` before the first `<cite>` and a literal `]` after the last `</cite>`; for single-key citations, no outer brackets are emitted. The `enrich_citations` regex pattern (`r'<cite data-key="([^"]+)">\[?[^\]<]+\]?</cite>'`) is **unchanged** and remains valid.
+The multi-citation format (outer brackets, comma-separated individual `<cite>` elements without inner brackets) matches the current output exactly. For multi-key citations, the plugin emits a literal `[` before the first `<cite>` and a literal `]` after the last `</cite>`; for single-key citations, no outer brackets are emitted. The `enrich_citations` regex pattern (`r'<cite data-key="([^"]+)">\[?[^\]<]+\]?</cite>'`) is **unchanged** and remains valid for both forms: for single-key `<cite data-key="A">[A]</cite>` the pattern matches with `\[?` consuming `[` and `\]?` consuming `]`; for multi-key inner elements `<cite data-key="A">A</cite>` the pattern matches with `\[?` and `\]?` each consuming nothing (both are optional).
 
 **What `markdown-it-py` handles natively:** all heading levels (`#` through `######`), bullet and ordered lists, tables (via the built-in table rule enabled with `"table"` option), bold, italic, HTML escaping. Table output is semantically equivalent to the current custom parser: `<table><thead><tr>...</tr></thead><tbody>...</tbody></table>` with `<th>` and `<td>` elements. Exact whitespace and attribute ordering need not be preserved; semantic equivalence is sufficient.
 
@@ -165,10 +165,12 @@ The prerequisite check (currently on `references_bib`) is replaced with a fatal 
 | `.claude/reference/bibtex-format.md` | Replaced by `.claude/reference/citations-format.md` — describes the `citations.json` JSON schema and the `AuthorYearKeyword` key naming convention |
 | `.claude/reference/summary-format.md` | `- **BibTeX Key:**` → `- **Citation Key:**` in the metadata block template |
 | `.claude/reference/synthesis-format.md` | Replace **all** occurrences of `[BibKey]` / `[Author2024Keyword]` / `**[BibKey]**` / `[Jones2022Debate, Lee2024Review]` in prose and examples → `[@BibKey]` / `[@Author2024Keyword]` / `**[@BibKey]**` / `[@Jones2022Debate, @Lee2024Review]`. The line "Keys must match entries in `references.bib`" → "Keys must match entries in `citations.json`". The Citation Index table header `\| BibTeX Key \|` → `\| Citation Key \|`. The Citation Index table body cells use bare keys (no brackets, no `@`) — those remain unchanged. |
+| `.claude/reference/html-template-notes.md` | No changes needed — this file describes the HTML template structure (tooltip behavior, panel layout), which is unchanged by this refactor. |
 
 ### 5. Skills updated
 
 **`summarize-documents/SKILL.md`:**
+- Update the YAML frontmatter `description` field from `"...Updates references.bib and summaries/manifest.json."` to `"...Updates citations.json."`
 - Replace all three occurrences of `@.claude/reference/bibtex-format.md` (the `## Reference` block at the top, the inline reference in step 4a, and the inline reference in the edge cases section) with `@.claude/reference/citations-format.md`
 - Step 3 (Load Existing State): read `citations.json` instead of `references.bib` and `manifest.json`; extract existing citation keys for duplicate-PDF checking
 - Step 4a (Fetch Citation Entry): use `fbib` as before to get BibTeX metadata; extract the needed fields (`title`, `authors`, `year`, `venue`, `doi`, `url`, `type`) and include them in the agent result block as a JSON object rather than raw BibTeX. Remove sub-step 5 of step 4a ("Append new entry to `references.bib` (create file if absent); verify no duplicate key") entirely — there is no longer a `references.bib` write
@@ -202,6 +204,17 @@ The prerequisite check (currently on `references_bib`) is replaced with a fatal 
 ### 6. Tests
 
 `tests/test_build_html.py` is updated:
+
+**Tests retained unchanged (no input or assertion updates needed):**
+- `test_cli_help` and `test_cli_missing_synthesis` — CLI behavior is unchanged; `test_cli_missing_synthesis` passes `--root tmp_path` where `synthesis.md` is absent, triggering the first prerequisite check (which still outputs "synthesis" and exits non-zero)
+- `test_render_paragraph_and_lists` — `<p>`, `<ul>`, `<li>` output is identical under `markdown-it-py`
+- `test_render_inline_formatting` — `<strong>` and `<em>` output is identical
+- `test_render_html_escaping` — `markdown-it-py` HTML-escapes by default; `&lt;script&gt;` assertion passes unchanged
+- `test_render_heading_inline_formatting` — `markdown-it-py` renders `## **Bold** Section` as `<h2 ...><strong>Bold</strong> Section</h2>`; the `"<strong>Bold</strong>" in html` assertion passes unchanged
+- `test_render_slug_collision` — slug generation uses the retained `_unique_slug` helper; behavior is identical
+- `test_build_html_page_*` (all four) — `build_html_page` signature and behavior are unchanged
+
+**Tests updated:**
 
 - `BIB_SAMPLE` constant removed; replaced with a `CITATIONS_SAMPLE` dict matching the `citations.json` schema (all metadata fields plus `pdf`, `summary`, and `type`)
 - `test_parse_bib_*` tests (3 tests) removed — `parse_bib` is deleted

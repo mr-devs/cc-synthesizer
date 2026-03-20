@@ -16,6 +16,7 @@ import html
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -310,7 +311,47 @@ def main():
             file=sys.stderr,
         )
 
-    print("Build complete (placeholder)")  # replaced in Task 6
+    # Read inputs
+    md_text = synthesis_md.read_text()
+    bib_text = references_bib.read_text()
+    manifest = json.loads(manifest_json.read_text()) if manifest_json.exists() else {}
+    memory_doc = memory_md.read_text() if memory_md.exists() else None
+
+    # Parse and render
+    body_html, detected_title, h2_headings = render_markdown(md_text)
+    title = args.title or detected_title or "Synthesis"
+    bib = parse_bib(bib_text)
+    body_html, missing_keys = enrich_citations(body_html, bib, manifest)
+
+    # Count citations in source (for report)
+    total_refs = len(re.findall(r"\[[A-Za-z][A-Za-z0-9]+\]", md_text))
+    resolved = total_refs - len(missing_keys)
+
+    # Assemble and write
+    page = build_html_page(
+        title=title,
+        body_html=body_html,
+        h2_headings=h2_headings,
+        memory_doc=memory_doc,
+        generated_date=date.today().isoformat(),
+        missing_keys=missing_keys,
+    )
+    output_html.write_text(page)
+
+    # Report
+    print(
+        f"Build HTML — Results\n"
+        f"=====================\n"
+        f"Input:      synthesis/synthesis.md\n"
+        f"Output:     synthesis/synthesis.html\n"
+        f"Citations:  {resolved} / {total_refs} "
+        f"({len(missing_keys)} missing from references.bib)\n\n"
+        f"Open synthesis/synthesis.html in your browser to view the interactive synthesis."
+    )
+    if missing_keys:
+        print("\nMissing citation keys:")
+        for k in missing_keys:
+            print(f"  [{k}]")
 
 
 if __name__ == "__main__":

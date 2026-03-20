@@ -1,5 +1,7 @@
+import json
 import subprocess
 import sys
+import textwrap
 import importlib.util
 
 
@@ -278,3 +280,82 @@ def test_build_html_page_memory_null_when_absent():
         missing_keys=[],
     )
     assert "SYNTHESIS_MEMORY = null" in page
+
+
+# ── Integration tests ───────────────────────────────────────────────────────
+def test_end_to_end(tmp_path):
+    """Full pipeline: real fixture files -> synthesis.html written and validated."""
+    (tmp_path / "synthesis").mkdir()
+    (tmp_path / "summaries").mkdir()
+
+    (tmp_path / "synthesis" / "synthesis.md").write_text(
+        textwrap.dedent("""\
+        # Test Synthesis
+
+        ## Major Themes
+
+        Research finds X [Smith2023Finding] and Y [Lee2024Review].
+
+        - Point one
+        - Point two
+    """)
+    )
+    (tmp_path / "references.bib").write_text(
+        textwrap.dedent(r"""
+        @article{Smith2023Finding,
+          author  = {Smith, John},
+          title   = {A Study of X},
+          journal = {J. Example},
+          year    = {2023},
+          doi     = {10.1234/x},
+        }
+        @inproceedings{Lee2024Review,
+          author    = {Lee, Bob},
+          title     = {A Review of Y},
+          booktitle = {Proc. Something},
+          year      = {2024},
+        }
+    """)
+    )
+    (tmp_path / "summaries" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "Smith2023Finding": {
+                    "pdf": "/docs/smith.pdf",
+                    "summary": "/summaries/smith.md",
+                }
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [sys.executable, "scripts/build_html.py", "--root", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+
+    html = (tmp_path / "synthesis" / "synthesis.html").read_text()
+
+    # Structure
+    assert "<!DOCTYPE html>" in html
+    assert "<title>Test Synthesis</title>" in html
+    assert "style.css" in html  # CSS linked
+    assert "script.js" in html  # JS linked
+    assert "SYNTHESIS_MEMORY" in html  # inline const block present
+    assert "SYNTHESIS_TOPIC" in html  # inline const block present
+
+    # Citations
+    assert 'data-key="Smith2023Finding"' in html
+    assert 'data-title="A Study of X"' in html
+    assert 'data-doi="10.1234/x"' in html
+    assert 'data-pdf="file:///docs/smith.pdf"' in html
+    assert 'data-summary="file:///summaries/smith.md"' in html
+
+    # Lee2024Review is in bib but not manifest -> metadata present, paths empty
+    assert 'data-key="Lee2024Review"' in html
+    assert 'data-title="A Review of Y"' in html
+
+    # No CDN or external resources
+    assert "cdn." not in html
+    assert "fonts.googleapis" not in html

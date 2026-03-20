@@ -6,11 +6,11 @@
 
 ## Citation Syntax
 
-Inline citations use BibTeX key notation: `[Author2024Keyword]`
+Inline citations use `[@CitKey]` notation: `[@Author2024Keyword]`
 
 - Every factual claim must be tied to at least one citation
-- Multiple citations: `[Jones2022Debate, Lee2024Review]`
-- Keys must match entries in `references.bib`
+- Multiple citations: `[@Jones2022Debate, @Lee2024Review]`
+- Keys must match entries in `citations.json`
 
 ## Document Structure
 
@@ -23,8 +23,8 @@ Inline citations use BibTeX key notation: `[Author2024Keyword]`
 
 Recommended entry points for newcomers:
 
-1. **[BibKey]** — {One sentence on why to read this first}
-2. **[BibKey]** — {Rationale}
+1. **[@BibKey]** — {One sentence on why to read this first}
+2. **[@BibKey]** — {Rationale}
 3-5 entries max.
 
 ## Overview
@@ -35,7 +35,7 @@ Recommended entry points for newcomers:
 
 ### {Theme Name}
 
-Prose synthesis of what the corpus says about this theme. Every claim tied to a citation. [BibKey]
+Prose synthesis of what the corpus says about this theme. Every claim tied to a citation. [@BibKey]
 
 ### {Theme Name}
 
@@ -43,11 +43,11 @@ Prose synthesis of what the corpus says about this theme. Every claim tied to a 
 
 ## Key Tensions & Debates
 
-What do sources disagree on? Why? What are the stakes of each position? [BibKey, BibKey]
+What do sources disagree on? Why? What are the stakes of each position? [@BibKey, @BibKey]
 
 ## Points of Consensus
 
-What do most or all sources agree on? [BibKey]
+What do most or all sources agree on? [@BibKey]
 
 ## Methodological Patterns
 
@@ -61,7 +61,7 @@ What does this corpus not address? What questions remain unanswered?
 
 ## Citation Index
 
-| BibTeX Key | One-line description |
+| Citation Key | One-line description |
 |---|---|
 | Smith2023Finding | Smith et al. study of X using Y method |
 | Jones2022Debate | Jones critique of the X framework |

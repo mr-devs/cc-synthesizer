@@ -37,10 +37,15 @@ Drop PDFs into `documents/`, then in Claude Code:
 Claude will confirm, then run cleanup → summarize → synthesize automatically. Afterwards:
 
 ```
-/build-html
+python scripts/build_html.py
 ```
 
 Open `synthesis/synthesis.html` in your browser.
+
+Optional: override the page title:
+```
+python scripts/build_html.py --title "My Custom Title"
+```
 
 ### Option B: Step by step
 
@@ -48,7 +53,7 @@ Open `synthesis/synthesis.html` in your browser.
 /cleanup-pdf-names documents/
 /summarize-documents documents/
 /create-synthesis
-/build-html
+python scripts/build_html.py
 ```
 
 ### Providing context
@@ -81,5 +86,5 @@ After adding new PDFs or editing summaries, re-run:
 ```
 /summarize-documents documents/    # only processes new PDFs
 /create-synthesis                  # regenerates synthesis.md
-/build-html                        # regenerates synthesis.html
+python scripts/build_html.py       # regenerates synthesis.html
 ```

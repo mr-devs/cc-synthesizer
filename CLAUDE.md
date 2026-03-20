@@ -10,7 +10,7 @@ A Claude Code skill pipeline for ingesting PDF documents and generating an inter
 
 Or run individual steps: `/cleanup-pdf-names`, `/summarize-documents`, `/create-synthesis`, `/launch-synthesis`
 
-See `docs/getting-started.md` for full instructions.
+See `README.md` for full instructions.
 
 ## Python
 

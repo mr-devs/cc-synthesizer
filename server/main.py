@@ -5,7 +5,7 @@ server/main.py — FastAPI server for cc-synthesizer.
 Receives context payload from synthesis.html, reads local summary files,
 and streams a Claude response as SSE via the Claude Code CLI.
 
-Start: uv run uvicorn server.main:app --reload
+Start: PYTHONPATH=/path/to/cc-synthesizer uv run uvicorn server.main:app --reload
 Prereq: claude CLI must be installed and authenticated (claude auth status)
 """
 

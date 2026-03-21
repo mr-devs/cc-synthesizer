@@ -30,9 +30,7 @@ cd cc-synthesizer
 /create-synthesis
 ```
 
-Claude Code will go to work generating the summaries for all of the documents and then synthesizing them.
-This will take some time and will depend on the number of documents.
-Once complete...
+Claude Code will generate a structured summary for each document, then synthesize them into a single cross-cutting analysis. This will take some time depending on the number of documents. Once complete...
 
 **4.** Still in Claude Code, launch the interactive HTML page:
 
@@ -40,17 +38,29 @@ Once complete...
 /launch-synthesis
 ```
 
-Note: you may want to use the Claude Code `/clear` command before running the above to reset your context window.
+Note: you may want to run `/clear` first to reset your context window before this step.
 
-**5.** In a new terminal window, start the local server:
+**5.** In a new terminal window, start the local server to enable the "Ask Claude" side panel. The proper command will be printed by the `/launch-synthesis` skill for you to copy and paste.
 
-```bash
-uv run uvicorn server.main:app --reload
-```
-
-`/launch-synthesis` builds the HTML and opens the page in your browser. Start the local server in a new terminal (step 5) to enable the "Ask Claude" side panel — closing that terminal stops the server.
+`/launch-synthesis` builds the HTML and opens the page in your browser. The "Ask Claude" side panel requires the local server running in step 5 — closing that terminal stops the server.
 
 No separate API key needed — the Ask Claude feature uses your existing Claude Code subscription.
+
+**6.** (Optional) Export your synthesis as a shareable ZIP:
+
+```
+/export-synthesis
+```
+
+This packages the HTML, all source PDFs, summaries, and citations into a self-contained file anyone can open — no server required.
+
+**7.** (Optional) Start fresh with a new batch of PDFs:
+
+```
+/pipeline-reset
+```
+
+`/pipeline-reset` will "reset" the pipeline by deleting PDFs, summary files, etc. It will check if you have already exported your synthesis and, if you haven't, do it for you. It will also confirm with you the files to delete before deleting them.
 
 ---
 
@@ -61,13 +71,19 @@ No separate API key needed — the Ask Claude feature uses your existing Claude 
 ```
 documents/          →   /cleanup-pdf-names
                     →   /summarize-documents     →   summaries/*.md
-                                                     references.bib
+                                                     synthesis/citations.json
                     →   /create-synthesis        →   synthesis/synthesis.md
                     →   /launch-synthesis        →   synthesis/synthesis.html
-                                                     local server (port 8000)
+                                                     (server: run manually, port 8000)
+                    →   /export-synthesis        →   exports/*.zip
+                    →   /pipeline-reset          →   (clean slate for a new batch)
 ```
 
 `/create-synthesis` is the entry point for the full pipeline. If no summaries exist yet, it detects this and prompts you to confirm before running cleanup → summarize → synthesize automatically.
+
+Once you have a synthesis, `/export-synthesis` packages the HTML, all source PDFs, summaries, and citations into a self-contained ZIP you can share with anyone — no server required. 
+
+`/pipeline-reset` clears all generated files so you can start fresh with a new set of documents; it will offer to export first if a synthesis exists.
 
 ### Skills
 
@@ -76,7 +92,9 @@ documents/          →   /cleanup-pdf-names
 | `/cleanup-pdf-names <path>` | Sanitizes PDF filenames (spaces → underscores, dashes normalized) for consistent downstream processing |
 | `/summarize-documents <path> ["context"]` | Generates a per-document summary for each PDF; detects document type and adapts the summary structure; fetches BibTeX entries via DOI/title lookup; skips already-summarized documents |
 | `/create-synthesis ["context"]` | Reads all summaries and generates a cross-cutting synthesis with thematic sections, tensions, consensus, gaps, and inline citations; triggers the full pipeline if summaries are missing |
-| `/launch-synthesis` | Builds the interactive HTML, starts the local FastAPI server, and opens the page in your browser |
+| `/launch-synthesis` | Builds the interactive HTML and opens the page in your browser (start the server separately to enable Ask Claude) |
+| `/export-synthesis ["name"]` | Packages synthesis.html, all PDFs, summaries, and citations.json into a shareable ZIP in `exports/`; disables the Ask Claude button since it requires a local server |
+| `/pipeline-reset` | Clears all generated files (PDFs, summaries, synthesis outputs) for a fresh start; offers to export first if a synthesis exists |
 
 All skills accept optional freetext context to orient their output:
 
@@ -119,13 +137,13 @@ After `/launch-synthesis` opens the page:
 - **Hover a citation** → tooltip with title, authors, year, venue, and links to open the source PDF and view the summary
 - **Select any text → "Ask Claude"** → a side panel slides in with a streaming Claude response, pre-loaded with the selected passage, the relevant citations, and your synthesis memory context
 
-The local server must be running for the "Ask Claude" side panel to work. `/launch-synthesis` opens the HTML page and then prompts you to start the server yourself in a **new terminal window**:
+The local server must be started manually in a separate terminal before using Ask Claude:
 
 ```bash
-uv run uvicorn server.main:app --reload
+PYTHONPATH=. uv run uvicorn server.main:app --reload
 ```
 
-Closing that terminal window automatically stops the server — no cleanup needed.
+Stop it with `Ctrl+C` in that terminal, or `pkill -f "uvicorn server.main:app"`.
 
 ---
 
@@ -173,6 +191,7 @@ cc-synthesizer/
 ├── documents/            # Drop your PDFs here (not version-controlled)
 ├── summaries/            # Auto-generated per-document summaries
 ├── synthesis/            # Auto-generated synthesis.md, synthesis.html, and guidance files
+├── exports/              # Packaged synthesis ZIPs for sharing (not version-controlled)
 ├── server/               # FastAPI server for in-page Claude responses
 └── scripts/              # build_html.py and HTML templates
 ```

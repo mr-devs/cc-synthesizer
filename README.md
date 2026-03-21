@@ -7,6 +7,7 @@ Drop documents about any topic into `documents/`, run one command, and get:
 - A structured markdown summary of each document
 - A cross-cutting synthesis with thematic analysis, tensions, consensus, and gaps — every claim tied to an inline citation
 - An interactive HTML page where you can hover citations for metadata, open source PDFs, and highlight any passage to **ask Claude about it** in a streaming side panel
+- A shareable ZIP export of the interactive page (with all source PDFs and summaries) that anyone can open without a server
 
 Works with academic papers, industry reports, white papers, technical docs — any PDF content.
 

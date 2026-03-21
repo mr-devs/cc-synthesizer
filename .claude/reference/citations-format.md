@@ -14,7 +14,7 @@ Special cases: Hyphenated surnames → remove hyphen; Accents → remove; "et al
 
 ## `citations.json` Schema
 
-Location: `{repo_root}/citations.json`
+Location: `{repo_root}/synthesis/citations.json`
 
 ```json
 {

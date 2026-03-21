@@ -43,7 +43,7 @@ Report count. If zero, inform user and stop.
 
 ### Step 3: Load Existing State
 
-1. Read `citations.json` if it exists; extract existing citation keys for duplicate checking
+1. Read `synthesis/citations.json` if it exists; extract existing citation keys for duplicate checking
 2. For each PDF, determine expected citation key by parsing filename (format: `Author_-_YYYY_-_Title.pdf` or `Author - YYYY - Title.pdf`):
    - First author surname: text before ` et al.`, ` and `, ` - `, or `_-_`
    - Year: 4-digit number after first ` - ` or `_-_`
@@ -56,7 +56,7 @@ Report: existing bib entries, existing summaries, to process, to skip.
 
 ### Step 4: Process Each PDF
 
-**When processing multiple PDFs**, dispatch all of them in parallel using the Agent tool — one agent per PDF, all dispatched in the same message. Each agent has access to: `Bash, Read, Write, Glob`. Each agent handles steps 4a–4d independently and writes its own `.md` summary file. Agents must NOT write to `citations.json` — that is a shared file written in Step 5. Each agent should return a structured result block:
+**When processing multiple PDFs**, dispatch all of them in parallel using the Agent tool — one agent per PDF, all dispatched in the same message. Each agent has access to: `Bash, Read, Write, Glob`. Each agent handles steps 4a–4d independently and writes its own `.md` summary file. Agents must NOT write to `synthesis/citations.json` — that is a shared file written in Step 5. Each agent should return a structured result block:
 
 ```
 ---BEGIN_AGENT_RESULT---
@@ -133,9 +133,9 @@ For papers >8 pages: extract strategically:
 
 #### 4e. Update Citations (sequential mode only)
 
-When **not** using parallel agents, upsert the entry into `citations.json` at the repo root (create file if absent; add or overwrite the entry for this citation key — do not remove existing entries for other keys). Include all fields: `title`, `authors`, `year`, `venue`, `doi`, `url`, `type`, `pdf`, `summary` (absolute filesystem paths).
+When **not** using parallel agents, upsert the entry into `synthesis/citations.json` at the repo root (create file if absent; add or overwrite the entry for this citation key — do not remove existing entries for other keys). Include all fields: `title`, `authors`, `year`, `venue`, `doi`, `url`, `type`, `pdf`, `summary` (absolute filesystem paths).
 
-Write atomically: write the full JSON to a temp file in the same directory, then rename to `citations.json`.
+Write atomically: write the full JSON to a temp file in the same directory, then rename to `synthesis/citations.json`.
 
 ---
 
@@ -144,12 +144,12 @@ Write atomically: write the full JSON to a temp file in the same directory, then
 After all agents have returned, collect their structured result blocks.
 
 1. **Triage**: parse each `---BEGIN_AGENT_RESULT---` block; separate successes from errors (or unparseable output)
-2. **Read existing `citations.json`** from disk first (or `{}` if absent)
+2. **Read existing `synthesis/citations.json`** from disk first (or `{}` if absent)
 3. **Deduplicate citation keys**: two collision cases:
    - **Same-batch collision**: two agents returned the same `CitKey` for different PDFs → rename the second with a letter suffix (`b`, `c`, …) and note it in warnings
    - **Reprocess collision**: a batch key matches a pre-existing on-disk key for the same PDF → overwrite (true upsert)
    - A batch key that collides with a pre-existing on-disk key for a *different* PDF is treated as a same-batch collision and renamed
-4. **Write `citations.json`**: merge all new `CITATION_ENTRY` objects (parsed as JSON) into the existing dict; write atomically (temp file + rename)
+4. **Write `synthesis/citations.json`**: merge all new `CITATION_ENTRY` objects (parsed as JSON) into the existing dict; write atomically (temp file + rename)
 
 ---
 

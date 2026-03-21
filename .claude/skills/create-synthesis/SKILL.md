@@ -48,7 +48,7 @@ Also check for `synthesis-guidance.md` in the `synthesis/` directory. If it exis
 
 1. Find all `*.md` files in `summaries/` recursively
 2. Read each summary file fully
-3. Read `citations.json` (single `json.load()`)
+3. Read `synthesis/citations.json` (single `json.load()`)
 
 **Large corpus handling (>30 summaries):**
 Inform the user: "This corpus has {N} summaries. Processing in thematic passes to manage context. For best results, run this in a fresh Claude Code context."
@@ -58,7 +58,7 @@ Process summaries in thematic passes: first pass reads all Metadata blocks and t
 
 ### Step 4: Generate Synthesis
 
-Using the loaded summaries, guidance (if any), and `citations.json`:
+Using the loaded summaries, guidance (if any), and `synthesis/citations.json`:
 
 1. Identify 3–7 major themes (fewer for small corpora)
 2. Identify key tensions and debates across documents
@@ -114,5 +114,5 @@ Citations used:       {M distinct citation keys}
 Output:               synthesis/synthesis.md
 Memory stub:          synthesis/synthesis-memory.md ({created|already exists — updated topic/corpus/themes only})
 
-Run /build-html to generate the interactive HTML page.
+Run /launch-synthesis to build the interactive HTML page and open it in the browser.
 ```

@@ -3,7 +3,7 @@ name: export-synthesis
 description: Package the synthesis into a shareable ZIP for distribution. Use when the user wants to share, export, or distribute their synthesis to others. Creates a self-contained directory (synthesis-export/) with the HTML, CSS, JS, all source PDFs, and all summary files, then zips it. The "Ask Claude" functionality is automatically removed (button hidden via CSS) since it requires a local server to work. Invoke when the user says things like "export", "share", "package", "zip up", "distribute", or "send the synthesis to someone".
 argument-hint: [output-name]
 allowed-tools: Bash
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 ## What this skill does

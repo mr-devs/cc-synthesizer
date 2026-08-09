@@ -1,7 +1,7 @@
 ---
 name: launch-synthesis
 description: Use when the user wants to view or interact with synthesis.html after running /create-synthesis — builds the HTML, verifies Claude Code auth, starts the local server, and opens the page in the browser
-allowed-tools: Bash, Read, Edit
+allowed-tools: Bash, Read, Edit, Agent
 ---
 
 # Launch Synthesis
@@ -12,34 +12,17 @@ Builds `synthesis/synthesis.html`, starts the local FastAPI server, and opens th
 
 Run the following steps in order. Stop and report clearly if any step fails.
 
-### Step 1 — Build the HTML (iterative warning-fix loop)
+### Step 1 — Build the HTML
 
-Run the build script and capture its full output:
+Dispatch a single subagent with `subagent_type: html-build-fixer`. It runs `uv run python scripts/build_html.py`, classifies the warnings, edits heading-structure problems in `synthesis/synthesis.md`, and re-builds — up to 3 iterations. The agent definition at `.claude/agents/html-build-fixer.md` carries the full loop and return format, so the dispatch prompt needs no detail beyond "build the synthesis HTML and fix any structural warnings."
 
-```bash
-uv run python scripts/build_html.py
-```
+Act on its status line:
 
-**If the build fails** (non-zero exit code or error output), report the error and stop.
+- **`BUILD: clean`** or **`BUILD: fixed (n edits)`** — proceed to Step 2.
+- **`BUILD: unresolved`** — report the remaining warnings to the user and stop.
+- **`BUILD: failed`** — report the build error and stop.
 
-**If the build succeeds**, inspect the output for lines beginning with `WARNING:`.
-
-Classify each warning:
-- **Fixable warnings**: heading level jumps (e.g., "Heading level jump from h2 to h4") and multiple H1 headings. These indicate structural problems in `synthesis/synthesis.md` that can be corrected by editing the file.
-- **Non-fixable warnings**: missing citation keys (e.g., "Missing citation keys:" followed by `[@Key]` entries). These require re-running `/summarize-documents` and cannot be fixed by editing the synthesis.
-
-**If there are fixable warnings**:
-1. Read `synthesis/synthesis.md` using the Read tool.
-2. Understand the specific warning (which heading, which level jump, or which extra H1).
-3. Edit `synthesis/synthesis.md` using the Edit tool to fix the structural issue:
-   - For heading level jumps: change the offending heading's `#` count to the correct sequential level (e.g., change `#####` to `###` if jumping from h2 to h5).
-   - For multiple H1s: demote the second and subsequent H1s to H2 (change `# Heading` to `## Heading`).
-4. Re-run `uv run python scripts/build_html.py` and re-inspect output.
-5. Repeat up to **3 total iterations**. If fixable warnings persist after 3 iterations, report them to the user and stop.
-
-**If only non-fixable (citation) warnings remain** after all fixable warnings are resolved (or if there were never any fixable warnings): proceed with the launch but note the citation warnings in your final report to the user.
-
-**If there are no warnings**: proceed immediately.
+If the agent returns a `CITATION_WARNINGS:` block, the build still succeeded — these are missing citation keys, which cannot be fixed by editing the synthesis. Proceed with the launch and surface them in Step 5.
 
 ### Step 2 — Check Claude Code auth
 

@@ -15,8 +15,9 @@ $ARGUMENTS
 
 ## Reference
 
-@.claude/reference/summary-format.md
 @.claude/reference/citations-format.md
+
+`@.claude/reference/summary-format.md` is deliberately *not* included here — in parallel mode the summaries are written by `pdf-summarizer` agents, which read it themselves. Read it on demand only in single-PDF sequential mode.
 
 ## Instructions
 
@@ -56,82 +57,23 @@ Report: existing bib entries, existing summaries, to process, to skip.
 
 ### Step 4: Process Each PDF
 
-**When processing multiple PDFs**, dispatch all of them in parallel using the Agent tool — one agent per PDF, all dispatched in the same message. Each agent has access to: `Bash, Read, Write, Glob`. Each agent handles steps 4a–4d independently and writes its own `.md` summary file. Agents must NOT write to `synthesis/citations.json` — that is a shared file written in Step 5. Each agent should return a structured result block:
+**When processing multiple PDFs**, dispatch one `pdf-summarizer` subagent per PDF using the Agent tool with `subagent_type: pdf-summarizer`.
 
-```
----BEGIN_AGENT_RESULT---
-STATUS: success | error
-PDF: {pdf_path}
-BIBKEY: {final_cit_key}
-CITATION_METHOD: doi|title|manual
-SUMMARY_PATH: {absolute_path}
-CITATION_ENTRY:
-```json
-{ "Smith2023Finding": { "title": "...", "authors": "...", "year": "...", "venue": "...", "doi": "...", "url": "...", "type": "...", "pdf": "/abs/path/documents/subdir/Smith_-_2023_-_Title.pdf", "summary": "/abs/path/summaries/subdir/Smith2023Finding.md" } }
-```
-WARNINGS: {any warnings, or "none"}
----END_AGENT_RESULT---
-```
+The agent definition at `.claude/agents/pdf-summarizer.md` carries the full per-PDF procedure — citation lookup, document-type detection, token-efficient extraction, and summary writing — along with the structured result contract. Each dispatch prompt only needs to supply:
 
-On error: `STATUS: error`, `PDF: {path}`, `ERROR: {description}`.
+- `pdf_path` — path to the PDF
+- `subdir` — the subdirectory segment computed in Step 2 (empty string if none)
+- `context` — the optional context parsed from $ARGUMENTS, if any
 
-**When processing a single PDF**, agents are optional; you may handle it directly in the main context.
+The agent's tool list (`Bash, Read, Write, Glob`) is enforced by its definition, and it is instructed never to touch `synthesis/citations.json` — that shared file is written once, in Step 5.
 
-For each PDF marked **process**:
+**Dispatch in waves of 15.** The concurrent subagent limit is 20 per session, so dispatching more than that in a single message fails with `Concurrent subagent limit reached`. Send at most 15 agents per message, collect that wave's result blocks, then dispatch the next wave. All waves are consolidated together in Step 5.
 
-#### 4a. Fetch Citation Entry
+Each agent returns a `---BEGIN_AGENT_RESULT---` … `---END_AGENT_RESULT---` block. On success it carries `STATUS`, `PDF`, `BIBKEY`, `CITATION_METHOD`, `SUMMARY_PATH`, `CITATION_ENTRY` (a JSON object keyed by the citation key), and `WARNINGS`; on failure, `STATUS: error` with `PDF` and `ERROR`. The exact field formats live in `.claude/agents/pdf-summarizer.md` — Step 5 parses these fields.
 
-1. Search for DOI in the PDF:
-   ```bash
-   .claude/skills/pdf-extraction/scripts/pdf_extract.sh search "{pdf_path}" "doi"
-   ```
-2. If DOI found: run `fbib "{doi}"` — if successful, use this BibTeX entry (regenerate key per @.claude/reference/citations-format.md); extract fields (`title`, `authors`, `year`, `venue`, `doi`, `url`, `type`) for the `citations.json` entry
-3. If no DOI or fbib fails: extract first page and try title-based search:
-   ```bash
-   .claude/skills/pdf-extraction/scripts/pdf_extract.sh first "{pdf_path}" 1
-   ```
-   Then run `fbib "Full Paper Title"`
-4. If both fail: use the already-extracted first page to construct the entry manually per @.claude/reference/citations-format.md
+**When processing a single PDF**, agents are optional. You may handle it directly in the main context by following the procedure in `.claude/agents/pdf-summarizer.md` — citation lookup, type detection, extraction, summary writing — reading `.claude/reference/summary-format.md` yourself for the templates, then doing 4a below. Skip Step 5 in that case.
 
-#### 4b. Detect Document Type
-
-If first page not yet extracted, extract it:
-```bash
-.claude/skills/pdf-extraction/scripts/pdf_extract.sh first "{pdf_path}" 1
-```
-
-Classify as one of: Academic paper, Industry/government report, White paper/opinion, Book chapter, Technical documentation, Other. Use title, abstract, and any venue/publisher info visible on the first page.
-
-If context provided in $ARGUMENTS, it may override or inform this classification (e.g., "these are industry reports").
-
-#### 4c. Extract Content (Token-Efficient)
-
-For papers ≤8 pages: extract all content:
-```bash
-.claude/skills/pdf-extraction/scripts/pdf_extract.sh all "{pdf_path}"
-```
-
-For papers >8 pages: extract strategically:
-1. First page (may already be done from 4a/4b — reuse it, do not re-extract)
-2. Locate key sections:
-   ```bash
-   .claude/skills/pdf-extraction/scripts/pdf_extract.sh search-pages "{pdf_path}" "Method"
-   .claude/skills/pdf-extraction/scripts/pdf_extract.sh search-pages "{pdf_path}" "Result"
-   .claude/skills/pdf-extraction/scripts/pdf_extract.sh search-pages "{pdf_path}" "Limitation"
-   .claude/skills/pdf-extraction/scripts/pdf_extract.sh search-pages "{pdf_path}" "Conclusion"
-   ```
-3. Extract only those pages. Target 4–6 pages maximum.
-
-#### 4d. Write Summary
-
-1. Determine output path:
-   - Subdir present: `summaries/{subdir}/{BibKey}.md`
-   - Flat (no subdir): `summaries/{BibKey}.md`
-   - Create the output directory if it does not exist
-2. Write summary using the template for the detected document type per @.claude/reference/summary-format.md
-3. If context was provided in $ARGUMENTS, use it to orient emphasis in the summary (e.g., "focus on methodology")
-
-#### 4e. Update Citations (sequential mode only)
+#### 4a. Update Citations (sequential mode only)
 
 When **not** using parallel agents, upsert the entry into `synthesis/citations.json` at the repo root (create file if absent; add or overwrite the entry for this citation key — do not remove existing entries for other keys). Include all fields: `title`, `authors`, `year`, `venue`, `doi`, `url`, `type`, `pdf`, `summary` (absolute filesystem paths).
 
@@ -141,7 +83,7 @@ Write atomically: write the full JSON to a temp file in the same directory, then
 
 ### Step 5: Consolidate Agent Results (parallel mode only)
 
-After all agents have returned, collect their structured result blocks.
+After every wave has returned, collect all structured result blocks together and consolidate once.
 
 1. **Triage**: parse each `---BEGIN_AGENT_RESULT---` block; separate successes from errors (or unparseable output)
 2. **Read existing `synthesis/citations.json`** from disk first (or `{}` if absent)
@@ -181,8 +123,10 @@ Warnings (if any):
 
 ## Edge Cases
 
+In parallel mode these are handled inside `pdf-summarizer`; the cases below apply to single-PDF sequential mode and to how you report agent failures.
+
 ### Unreadable PDF
-Report "Could not read PDF: {filename}", skip the file, continue with remaining PDFs.
+Report "Could not read PDF: {filename}", skip the file, continue with remaining PDFs. An agent returning `STATUS: error` is counted in the Step 6 report and does not abort the batch.
 
 ### Non-standard filename
 If filename doesn't match `Author - YYYY - Title` or `Author_-_YYYY_-_Title` format, extract first page to get metadata directly rather than parsing the filename.

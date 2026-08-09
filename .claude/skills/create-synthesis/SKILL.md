@@ -2,7 +2,7 @@
 name: create-synthesis
 description: Generate a cross-cutting synthesis document from all summaries in summaries/. Reads synthesis-guidance.md if present. Can trigger the full pipeline if summaries are missing.
 argument-hint: ["optional context or guidance" | path/to/guidance-doc]
-allowed-tools: Bash, Read, Write, Edit, Glob, AskUserQuestion, Skill
+allowed-tools: Bash, Read, Write, Edit, Glob, AskUserQuestion, Skill, Agent
 ---
 
 # Create Synthesis
@@ -47,12 +47,21 @@ Also check for `synthesis-guidance.md` in the `synthesis/` directory. If it exis
 ### Step 3: Load All Summaries
 
 1. Find all `*.md` files in `summaries/` recursively
-2. Read each summary file fully
-3. Read `synthesis/citations.json` (single `json.load()`)
+2. Read each summary file fully — **but only for corpora of 30 or fewer summaries**. Above that, use the large-corpus handling below instead.
+3. Read `synthesis/citations.json` (single `json.load()`) — always do this here, in the main context
 
 **Large corpus handling (>30 summaries):**
-Inform the user: "This corpus has {N} summaries. Processing in thematic passes to manage context. For best results, run this in a fresh Claude Code context."
-Process summaries in thematic passes: first pass reads all Metadata blocks and the first section of each summary (Takeaways/Key Findings/Core Arguments) to identify themes; subsequent passes read full summaries for specific themes as needed. Use `/compact` between passes.
+
+Do not read every summary into this context. Fan out to `corpus-scout` subagents instead:
+
+1. Inform the user: "This corpus has {N} summaries. Dispatching {K} scout agents to digest them in parallel."
+2. Split the summary list into chunks of ~10 files each.
+3. Dispatch one subagent per chunk with `subagent_type: corpus-scout`, passing that chunk's file paths and any guidance-document framing. The agent definition at `.claude/agents/corpus-scout.md` carries the return schema and the size budget; the dispatch prompt only needs the file list and framing.
+4. **Cap at 15 concurrent** (the session limit is 20). For more than 15 chunks, dispatch in waves.
+5. Merge the returned digests here in the main context: collapse overlapping themes, pool the tension and consensus lines, union the gaps.
+6. Read in full only the summaries flagged under `NOTABLE`, plus any others you need in order to state a specific claim precisely. Do not bulk-read the rest.
+
+Write Step 4's synthesis yourself, in this context — the scouts supply raw material, not prose.
 
 ---
 
@@ -75,7 +84,21 @@ Write `synthesis/synthesis.md` per @.claude/reference/synthesis-format.md:
 
 ---
 
-### Step 5: Write Synthesis Memory Stub
+### Step 5: Verify Citations and Claims
+
+Dispatch a single subagent with `subagent_type: synthesis-verifier`. It reads `synthesis/synthesis.md`, `synthesis/citations.json`, and the summary files, then reports any citation that does not resolve and any claim its cited summary does not support. The agent definition at `.claude/agents/synthesis-verifier.md` carries the full procedure and return format — the dispatch prompt needs no detail beyond "verify the synthesis just written."
+
+The verifier is read-only. Apply any fixes yourself, here in the main context:
+
+- **UNRESOLVED** — the citation key is wrong or its metadata is missing. Correct the key if it is a typo; otherwise drop the citation and note it for the report (this usually means `/summarize-documents` needs re-running).
+- **UNSUPPORTED / OVERSTATED** — rewrite the claim so it matches what the summary actually says, or cite a source that does support it.
+- **MISATTRIBUTED** — swap in the correct citation key.
+
+If the verifier returns `CLEAN`, change nothing. Record the count of problems found and fixed for Step 7.
+
+---
+
+### Step 6: Write Synthesis Memory Stub
 
 Create `synthesis/synthesis-memory.md` with this structure:
 
@@ -104,13 +127,14 @@ Create `synthesis/synthesis-memory.md` with this structure:
 
 ---
 
-### Step 6: Report Results
+### Step 7: Report Results
 
 ```
 Create Synthesis — Results
 ===========================
-Summaries read:       {N}
+Summaries read:       {N} ({"via {K} scout agents" if fan-out was used})
 Citations used:       {M distinct citation keys}
+Verification:         {"clean" | "{P} problems found, {Q} fixed"}
 Output:               synthesis/synthesis.md
 Memory stub:          synthesis/synthesis-memory.md ({created|already exists — updated topic/corpus/themes only})
 
